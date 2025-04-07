@@ -30,6 +30,7 @@ void Application::initVulkan() {
 	createGraphicsPipeline();
 	createFramebuffers();
 	createCommandPool();
+	createVertexBuffer();
 	createCommandBuffers();
 	createSynchronizationObjects();
 }
@@ -48,8 +49,11 @@ void Application::cleanup() {
 
 	vkDestroyPipeline(vulkanLogicalDevice, vulkanGraphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(vulkanLogicalDevice, vulkanPipelineLayout, nullptr);
-
 	vkDestroyRenderPass(vulkanLogicalDevice, vulkanRenderPass, nullptr);
+
+	// Destroy the vertex buffer and de-allocate the memory allocated for it.
+	vkDestroyBuffer(vulkanLogicalDevice, vertexBuffer, nullptr);
+	vkFreeMemory(vulkanLogicalDevice, vertexBufferMemory, nullptr);
 
 	// Destroy synchronization objects
 	for (size_t i{ 0 }; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -462,12 +466,16 @@ void Application::createGraphicsPipeline() {
 	VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
 	// Describing the vertex input to the Vulkan vertex shader
+	auto vertexBindingDecription = Vertex::getBindingDescription();
+	auto vertexAttributeDescription = Vertex::getAttributeDescriptions();
+
 	VkPipelineVertexInputStateCreateInfo vertexDataInputInfo{};
 	vertexDataInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexDataInputInfo.pVertexBindingDescriptions = nullptr;
-	vertexDataInputInfo.vertexBindingDescriptionCount = 0;
-	vertexDataInputInfo.pVertexBindingDescriptions = nullptr;
-	vertexDataInputInfo.vertexAttributeDescriptionCount = 0;
+	vertexDataInputInfo.pVertexBindingDescriptions = &vertexBindingDecription;
+	vertexDataInputInfo.vertexBindingDescriptionCount = 1;
+	vertexDataInputInfo.pVertexAttributeDescriptions = vertexAttributeDescription.data();
+	vertexDataInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescription.size());
+
 
 	// Input assembler creation description:
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
@@ -828,6 +836,84 @@ void Application::createCommandPool() {
 	std::cout << "> Created Vulkan command pool successfully.\n";
 }
 
+void Application::createVertexBuffer() {
+	// Specify the creation of vertex buffer
+	VkBufferCreateInfo vertexBufferCreateInfo{};
+	vertexBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vertexBufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vertexBufferCreateInfo.size = sizeof(vertices.at(0)) * vertices.size();
+	vertexBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	// Create the vertex buffer
+	VkResult result = vkCreateBuffer(vulkanLogicalDevice, &vertexBufferCreateInfo, nullptr, &vertexBuffer);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to create Vertex Buffer!");
+	}
+	std::cout << "> Created vertex buffer successfully.\n";
+
+	// Get the memory requirements of the buffer we want to allocate memory for
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(vulkanLogicalDevice, vertexBuffer, &memRequirements);
+
+#ifdef NDEBUG
+// Release mode
+#else
+	// Debug mode
+	std::cout << "DEBUG LOG: Suitable memory-type bits fetched for Vertex Buffer allocation (binary): " << 
+		std::bitset<32>(memRequirements.memoryTypeBits) << "\n";
+#endif
+
+	// Allocate the memory for the Vertex Buffer
+	VkMemoryAllocateInfo memAllocateInfo{};
+	memAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocateInfo.allocationSize = memRequirements.size;
+	memAllocateInfo.memoryTypeIndex = findMemoryType(
+		memRequirements.memoryTypeBits, 
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+	);
+
+	result = vkAllocateMemory(vulkanLogicalDevice, &memAllocateInfo, nullptr, &vertexBufferMemory);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to allocate memory for Vertex Buffer!");
+	}
+	std::cout << "> Allocated memory for vertex buffer successfully.\n";
+
+	// Once memory is allocated for the buffer, we can now associate (bind) this memory with the buffer:
+	// Since this memory was allocated specifically for this buffer, the offset is 0.
+	result = vkBindBufferMemory(vulkanLogicalDevice, vertexBuffer, vertexBufferMemory, 0);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to bind the Vertex Buffer memory with the Vertex Buffer!");
+	}
+	std::cout << "> Bound the vertex buffer memory to the vertex buffer successfully.\n";
+
+
+	// Fill the vertex buffer with the actual vertex data...
+
+	// We first map the buffer memory into CPU accessible memory:
+	void* data;
+	vkMapMemory(vulkanLogicalDevice, vertexBufferMemory, 0, vertexBufferCreateInfo.size, 0, &data);
+	// Copy the vertex data to the mapped memory via memcpy:
+	memcpy(data, vertices.data(), (size_t)vertexBufferCreateInfo.size);
+	// Unmap the memory after writing the data
+	vkUnmapMemory(vulkanLogicalDevice, vertexBufferMemory);
+	/*
+		NOTE:
+		It is also possible that writes to the buffer are not visible in the mapped memory yet. 
+		There are two ways to deal with that problem:
+
+		- Use a memory heap that is host coherent, indicated with VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+		- Call vkFlushMappedMemoryRanges after writing to the mapped memory, and call vkInvalidateMappedMemoryRanges before reading from the mapped memory
+
+		We went for the first approach, which ensures that the mapped memory always matches the contents of the allocated memory. 
+		Do keep in mind that this may lead to slightly worse performance than explicit flushing, 
+		but we'll see why that doesn't matter in the future.
+
+		Flushing memory ranges or using a coherent memory heap means that the driver will be aware of our writes to the buffer, 
+		but it doesn't mean that they are actually visible on the GPU yet. The transfer of data to the GPU is an operation that happens 
+		in the background and the specification simply tells us that it is guaranteed to be complete as of the next call to 'vkQueueSubmit'.
+	*/
+}
+
 void Application::createCommandBuffers() {
 
 	vulkanCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -884,6 +970,11 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	// Bind the Graphics Pipeline
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanGraphicsPipeline);
 
+	// Bind the Vertex Buffer
+	VkBuffer vertexBuffers[] = { vertexBuffer };
+	VkDeviceSize offsets[] = { 0 };
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
 	// We specified viewport and scissor state for this pipeline to be dynamic. 
 	// So we need to set them in the command buffer before issuing our draw command.
 	VkViewport viewport{};
@@ -901,7 +992,8 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 	// Issue the Draw command for the Triangle
-	vkCmdDraw(commandBuffer, 3, 1, 0, 0);  // Use 1 for instanceCount if NOT using instanced rendering
+	// Use 1 for instanceCount if NOT using instanced rendering
+	vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
 	// End the Render Pass
 	vkCmdEndRenderPass(commandBuffer);
@@ -984,6 +1076,34 @@ void Application::drawFrame() {
 	// Increment the frame
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
+}
+
+uint32_t Application::findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags properties) {
+	// Get the memory properties of the GPU
+	VkPhysicalDeviceMemoryProperties memoryProperties{};
+	vkGetPhysicalDeviceMemoryProperties(vulkanPhysicalDevice, &memoryProperties);
+
+	/*
+		NOTE:
+		Physical Device Memory properties contains 2 arrays: 
+		- memoryHeaps, and
+		- memoryTypes
+		[Refer the Vulkan Hardware Capability Viewer tool]
+		Memory Heaps are distinct memory resources (Example: VRAM and Swap-Space CPU RAM for when VRAM runs out)
+		Each memoryHeap contains multiple memory types.
+	*/
+
+	// Try and find a memory-type that is suitable for the buffer
+	for (uint32_t i{ 0 }; i < memoryProperties.memoryTypeCount; i++) {
+		if ((typefilter & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+			// Found a suitable memory type for the vertex buffer
+			// Also found a suitable memory type to write our buffer data to
+			return i;
+		}
+	}
+	throw std::runtime_error("RUNTIME ERROR: Failed to find suitable memory type!");
+
+	return 0;
 }
 
 void Application::createSynchronizationObjects() {

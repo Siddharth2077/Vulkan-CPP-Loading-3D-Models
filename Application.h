@@ -2,6 +2,7 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <stdexcept>
 #include <algorithm>
 #include <optional>
@@ -11,11 +12,14 @@
 #include <fstream>
 #include <limits>
 #include <vector>
+#include <bitset>
+#include <array>
 #include <set>
 
 // Forward declarations
 struct QueueFamilyIndices;
 struct SwapChainSupportDetails;
+struct Vertex;
 
 // APPLICATION CLASS
 class Application {
@@ -45,6 +49,8 @@ private:
 	VkPipelineLayout vulkanPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline vulkanGraphicsPipeline = VK_NULL_HANDLE;
 	VkCommandPool vulkanCommandPool = VK_NULL_HANDLE;
+	VkBuffer vertexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
 	std::vector<VkCommandBuffer> vulkanCommandBuffers;
 	std::vector<VkImage> vulkanSwapChainImages;
 	std::vector<VkImageView> vulkanSwapChainImageViews;
@@ -69,8 +75,7 @@ private:
 #else         
 	// Debug Mode:
 	const bool enableVulkanValidationLayers = true;
-#endif        
-
+#endif       
 
 	// Member Methods:
 	void initWindow();
@@ -100,10 +105,12 @@ private:
 	bool checkPhysicalDeviceExtensionsSupport(VkPhysicalDevice physicalDevice);
 	VkShaderModule createShaderModule(const std::vector<char>& compiledShaderCode);
 	void createCommandPool();
+	void createVertexBuffer();
 	void createCommandBuffers();
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex);
 	void createSynchronizationObjects();
 	void drawFrame();
+	uint32_t findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags properties);
 
 	// static methods:
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -134,4 +141,45 @@ struct SwapChainSupportDetails {
 	std::vector<VkSurfaceFormatKHR> surfaceFormats;
 	/// @brief List of presentation modes supported for the Swapchain (eg: FIFO, Mailbox etc.).
 	std::vector<VkPresentModeKHR> presentationModes;
+};
+
+///@brief Attributes to describe a vertex for the Vertex Shader.
+struct Vertex {
+	glm::vec2 position;
+	glm::vec3 color;
+
+	/// @brief Tell Vulkan how to pass this data format to the vertex shader once it's been uploaded into GPU memory.
+	static VkVertexInputBindingDescription getBindingDescription() {
+		VkVertexInputBindingDescription bindingInputDescription{};
+		bindingInputDescription.binding = 0;
+		bindingInputDescription.stride = sizeof(Vertex);
+		bindingInputDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		return bindingInputDescription;
+	}
+
+	// @brief Describes how to extract a vertex attribute from a chunk of vertex data originating from a binding description.
+	static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+		// We have two attributes, position and color, so we need two attribute description structs.
+		std::array<VkVertexInputAttributeDescription, 2> inputAttributeDescriptions{};
+
+		// For position data
+		inputAttributeDescriptions.at(0).binding = 0;
+		inputAttributeDescriptions.at(0).location = 0;  // The corresponding shader layout location for: inPosition
+		inputAttributeDescriptions.at(0).format = VK_FORMAT_R32G32_SFLOAT;  // Yes, we reuse color formats to specify vec2 of floats
+		inputAttributeDescriptions.at(0).offset = offsetof(Vertex, position);  // The offset in bytes from start of member: 'position' in the Vertex struct
+
+		// For color data
+		inputAttributeDescriptions.at(1).binding = 0;
+		inputAttributeDescriptions.at(1).location = 1;  // The corresponding shader layout location for: inColor
+		inputAttributeDescriptions.at(1).format = VK_FORMAT_R32G32B32_SFLOAT;  // vec3 of floats
+		inputAttributeDescriptions.at(1).offset = offsetof(Vertex, color);  // The offset in bytes from start of member: 'color' in the Vertex struct
+
+		return inputAttributeDescriptions;
+	}
+};
+// Vertex data of the triangle for the vertex buffer
+const std::vector<Vertex> vertices = {
+	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
 };
