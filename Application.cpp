@@ -33,6 +33,7 @@ void Application::initVulkan() {
 	createTransferCommandPool();
 	createTransferCommandBuffer();
 	createVertexBuffer();
+	createIndexBuffer();
 	createGraphicsCommandBuffers();
 	createSynchronizationObjects();
 }
@@ -53,7 +54,9 @@ void Application::cleanup() {
 	vkDestroyPipelineLayout(vulkanLogicalDevice, vulkanPipelineLayout, nullptr);
 	vkDestroyRenderPass(vulkanLogicalDevice, vulkanRenderPass, nullptr);
 
-	// Destroy the vertex buffer and de-allocate the memory allocated for it.
+	// Destroy the vertex & index buffer and de-allocate the memory allocated for them:
+	vkDestroyBuffer(vulkanLogicalDevice, indexBuffer, nullptr);
+	vkFreeMemory(vulkanLogicalDevice, indexBufferMemory, nullptr);
 	vkDestroyBuffer(vulkanLogicalDevice, vertexBuffer, nullptr);
 	vkFreeMemory(vulkanLogicalDevice, vertexBufferMemory, nullptr);
 
@@ -1044,6 +1047,50 @@ void Application::createVertexBuffer() {
 
 }
 
+void Application::createIndexBuffer() {
+	// Find the queue family indices that will share the Index Buffer
+	QueueFamilyIndices queueFamilies = findQueueFamilies(vulkanPhysicalDevice);
+	std::vector<uint32_t> queueFamilyIndices = {queueFamilies.graphicsFamily.value(), queueFamilies.transferFamily.value()};
+
+	// Buffer size of the index buffer
+	VkDeviceSize bufferSize = sizeof(indices.at(0)) * sizeof(indices);
+
+	// Create the Staging Buffer (host visible)
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+	createBuffer(
+		vulkanLogicalDevice,
+		bufferSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer,
+		stagingBufferMemory
+	);
+	void* data;
+	vkMapMemory(vulkanLogicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+	memcpy(data, indices.data(), (size_t)bufferSize);
+	vkUnmapMemory(vulkanLogicalDevice, stagingBufferMemory);
+
+	// Create the Index Buffer (device local)
+	createBuffer(
+		vulkanLogicalDevice,
+		bufferSize,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		indexBuffer,
+		indexBufferMemory,
+		queueFamilyIndices
+	);
+
+	// Copy the data from Staging to Index buffer (Host Visible -> High Performance Memory)
+	copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+	// Destroy the staging buffer and free the memory allocated to it
+	vkDestroyBuffer(vulkanLogicalDevice, stagingBuffer, nullptr);
+	vkFreeMemory(vulkanLogicalDevice, stagingBufferMemory, nullptr);
+
+}
+
 /// @brief Creates Graphics command buffers from the graphics command pool.
 void Application::createGraphicsCommandBuffers() {
 
@@ -1124,6 +1171,10 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	VkDeviceSize offsets[] = { 0 };
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
+	// Bind the Index Buffer
+	vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+
 	// We specified viewport and scissor state for this pipeline to be dynamic. 
 	// So we need to set them in the command buffer before issuing our draw command.
 	VkViewport viewport{};
@@ -1142,7 +1193,8 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 
 	// Issue the Draw command for the Triangle
 	// Use 1 for instanceCount if NOT using instanced rendering
-	vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+	//vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+	vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 	// End the Render Pass
 	vkCmdEndRenderPass(commandBuffer);

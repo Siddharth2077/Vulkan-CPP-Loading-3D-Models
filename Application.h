@@ -56,8 +56,10 @@ private:
 	std::vector<VkImage> vulkanSwapChainImages;
 	std::vector<VkImageView> vulkanSwapChainImageViews;
 	std::vector<VkFramebuffer> vulkanSwapChainFramebuffers;
-	VkBuffer vertexBuffer = VK_NULL_HANDLE;
+	VkBuffer vertexBuffer = VK_NULL_HANDLE;  // vertex buffer
 	VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+	VkBuffer indexBuffer = VK_NULL_HANDLE;  // index buffer
+	VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -103,6 +105,7 @@ private:
 	void createGraphicsCommandPool();
 	void createTransferCommandPool();
 	void createVertexBuffer();
+	void createIndexBuffer();
 	void createGraphicsCommandBuffers();
 	void createTransferCommandBuffer();
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex);
@@ -188,9 +191,21 @@ struct Vertex {
 		return inputAttributeDescriptions;
 	}
 };
-// Vertex data of the triangle for the vertex buffer
+
+// Indexed Vertex data of the rectangle for the vertex buffer
 const std::vector<Vertex> vertices = {
-	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},  // Top Left: red
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Top Right: green
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // Bottom Right: blue
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}  // Bottom Left: white
 };
+const std::vector<uint16_t> indices = {
+	0, 1, 2, 2, 3, 0
+};
+
+// Vertex data of the triangle for the vertex buffer
+//const std::vector<Vertex> vertices = {
+//	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+//	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+//	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+//};
