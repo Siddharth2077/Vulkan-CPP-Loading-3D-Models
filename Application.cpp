@@ -709,6 +709,10 @@ void Application::createBuffer(VkDevice logicalDevice, VkDeviceSize size, VkBuff
 
 /// @brief Function to copy the contents from one buffer to another.
 void Application::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+
+	// Reset the command buffer before recording
+	vkResetCommandBuffer(vulkanTransferCommandBuffer, 0);
+
 	// Begin the transfer command buffer
 	VkCommandBufferBeginInfo transferCommandBufferBeginInfo{};
 	transferCommandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1248,7 +1252,7 @@ uint32_t Application::findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags 
 			// Release Mode
 #else
 			// Debug Mode
-			std::cout << "\nDEBUG LOG: Found suitable memory-type for Buffer Memory allocation.\n";
+			std::cout << "DEBUG LOG: Found suitable memory-type for Buffer Memory allocation.\n";
 			std::cout << "DEBUG LOG: Requested Memory Properties = ";
 			if (properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 				std::cout << "DEVICE_LOCAL  ";
@@ -1267,7 +1271,7 @@ uint32_t Application::findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags 
 			if (properties & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
 				std::cout << "DEVICE_UNCACHED_AMD  ";
 			std::cout << "\n";
-			std::cout << "DEBUG LOG: Chosen Memory Type = " << i << " (Refer VHCV for more info)\n";
+			std::cout << "DEBUG LOG: Chosen Memory Type = " << i << " (Refer VHCV for more info)\n\n";
 #endif
 
 			return i;
