@@ -38,8 +38,9 @@ private:
 	uint32_t currentFrame{ 0 };
 	VkPhysicalDevice vulkanPhysicalDevice = VK_NULL_HANDLE;
 	VkDevice vulkanLogicalDevice = VK_NULL_HANDLE;
-	VkQueue deviceGraphicsQueue = VK_NULL_HANDLE;
-	VkQueue devicePresentationQueue = VK_NULL_HANDLE;
+	VkQueue deviceGraphicsQueue = VK_NULL_HANDLE;  // for draw commands
+	VkQueue devicePresentationQueue = VK_NULL_HANDLE;  // for presentation of images onto screen
+	VkQueue deviceTransferQueue = VK_NULL_HANDLE;  // used for buffer copying
 	VkSurfaceKHR vulkanSurface = VK_NULL_HANDLE;
 	VkSwapchainKHR vulkanSwapChain = VK_NULL_HANDLE;
 	VkFormat vulkanSwapChainImageFormat;
@@ -48,13 +49,15 @@ private:
 	VkRenderPass vulkanRenderPass = VK_NULL_HANDLE;
 	VkPipelineLayout vulkanPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline vulkanGraphicsPipeline = VK_NULL_HANDLE;
-	VkCommandPool vulkanCommandPool = VK_NULL_HANDLE;
-	VkBuffer vertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-	std::vector<VkCommandBuffer> vulkanCommandBuffers;
+	VkCommandPool vulkanGraphicsCommandPool = VK_NULL_HANDLE;  // graphics command pool
+	std::vector<VkCommandBuffer> vulkanGraphicsCommandBuffers;  // graphics command buffers (size based on frames in flight)
+	VkCommandPool vulkanTransferCommandPool = VK_NULL_HANDLE;  // transfer command pool
+	VkCommandBuffer vulkanTransferCommandBuffer = VK_NULL_HANDLE; // transfer command buffer
 	std::vector<VkImage> vulkanSwapChainImages;
 	std::vector<VkImageView> vulkanSwapChainImageViews;
 	std::vector<VkFramebuffer> vulkanSwapChainFramebuffers;
+	VkBuffer vertexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -75,6 +78,7 @@ private:
 #else         
 	// Debug Mode:
 	const bool enableVulkanValidationLayers = true;
+	bool queueFamiliesLoggedToDebugAlready = false;
 #endif       
 
 	// Member Methods:
@@ -95,6 +99,18 @@ private:
 	void createRenderPass();
 	void createGraphicsPipeline();
 	void createFramebuffers();
+	VkShaderModule createShaderModule(const std::vector<char>& compiledShaderCode);
+	void createGraphicsCommandPool();
+	void createTransferCommandPool();
+	void createVertexBuffer();
+	void createGraphicsCommandBuffers();
+	void createTransferCommandBuffer();
+	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex);
+	void createSynchronizationObjects();
+	void drawFrame();
+
+	void createBuffer(VkDevice logicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, VkBuffer& outVkBuffer, VkDeviceMemory& outBufferMemory, const std::vector<uint32_t>& queueFamilyIndices = {});
+	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 	bool isPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice);
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice);
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice);
@@ -103,13 +119,6 @@ private:
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
 	bool checkValidationLayersSupport();
 	bool checkPhysicalDeviceExtensionsSupport(VkPhysicalDevice physicalDevice);
-	VkShaderModule createShaderModule(const std::vector<char>& compiledShaderCode);
-	void createCommandPool();
-	void createVertexBuffer();
-	void createCommandBuffers();
-	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex);
-	void createSynchronizationObjects();
-	void drawFrame();
 	uint32_t findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags properties);
 
 	// static methods:
@@ -127,9 +136,11 @@ struct QueueFamilyIndices {
 	std::optional<uint32_t> graphicsFamily;
 	/// @brief The index of the Presentation queue family (if any) of the GPU.
 	std::optional<uint32_t> presentationFamily;
+	/// @brief The index of the Transfer queue family (if any) of the GPU.
+	std::optional<uint32_t> transferFamily;
 
 	bool isComplete() {
-		return graphicsFamily.has_value() && presentationFamily.has_value();
+		return graphicsFamily.has_value() && presentationFamily.has_value() && transferFamily.has_value();
 	}
 };
 

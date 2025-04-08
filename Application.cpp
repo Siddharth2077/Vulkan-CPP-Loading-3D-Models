@@ -1,4 +1,4 @@
-
+﻿
 #include "Application.h"
 
 
@@ -29,9 +29,11 @@ void Application::initVulkan() {
 	createRenderPass();
 	createGraphicsPipeline();
 	createFramebuffers();
-	createCommandPool();
+	createGraphicsCommandPool();
+	createTransferCommandPool();
+	createTransferCommandBuffer();
 	createVertexBuffer();
-	createCommandBuffers();
+	createGraphicsCommandBuffers();
 	createSynchronizationObjects();
 }
 
@@ -61,8 +63,9 @@ void Application::cleanup() {
 		vkDestroySemaphore(vulkanLogicalDevice, renderFinishedSemaphores.at(i), nullptr);
 		vkDestroyFence(vulkanLogicalDevice, inFlightFences.at(i), nullptr);
 	}
-	// Destroy command buffer pool
-	vkDestroyCommandPool(vulkanLogicalDevice, vulkanCommandPool, nullptr);
+	// Destroy command buffer pools
+	vkDestroyCommandPool(vulkanLogicalDevice, vulkanGraphicsCommandPool, nullptr);
+	vkDestroyCommandPool(vulkanLogicalDevice, vulkanTransferCommandPool, nullptr);
 
 	vkDestroyDevice(vulkanLogicalDevice, nullptr);
 	vkDestroySurfaceKHR(vulkanInstance, vulkanSurface, nullptr);
@@ -106,13 +109,13 @@ void Application::createVulkanInstance() {
 	vkEnumerateInstanceExtensionProperties(nullptr, &vulkanExtensionsCount, nullptr);
 	std::vector<VkExtensionProperties> vulkanExtensions(vulkanExtensionsCount);
 	vkEnumerateInstanceExtensionProperties(nullptr, &vulkanExtensionsCount, vulkanExtensions.data());
-	std::cout << "DEBUG LOG: Available Vulkan Extensions:\n";
+	std::cout << "\nDEBUG LOG: Available Vulkan Extensions:\n";
 	for (const VkExtensionProperties& extensionProperty : vulkanExtensions) {
 		std::cout << "\t" << extensionProperty.extensionName << " (version: " << extensionProperty.specVersion << ")\n";
 	}
 
 	// List down all the GLFW extensions required for Vulkan
-	std::cout << "DEBUG LOG: Required GLFW Extensions for Vulkan:\n";
+	std::cout << "\nDEBUG LOG: Required GLFW Extensions for Vulkan:\n";
 	bool glfwExtensionFound{ false };
 	for (int i{ 0 }; i < glfwExtensionsCount; i++) {
 		std::cout << "\t" << glfwExtensionNames[i];
@@ -130,6 +133,7 @@ void Application::createVulkanInstance() {
 			throw std::runtime_error("RUNTIME ERROR: Unsupported GLFW extensions found!");
 		}
 	}
+	std::cout << "\n";
 #endif
 
 	// [Required struct] Tells Vulkan how to create the instance
@@ -203,7 +207,11 @@ void Application::createLogicalDevice() {
 	QueueFamilyIndices queueFamilyIndices = findQueueFamilies(vulkanPhysicalDevice);
 
 	// Specify to Vulkan which Queues must be created and how many of them, along with the priority of each queue
-	std::set<uint32_t> requiredQueueFamilies = { queueFamilyIndices.graphicsFamily.value(), queueFamilyIndices.presentationFamily.value() };
+	std::set<uint32_t> requiredQueueFamilies = { 
+		queueFamilyIndices.graphicsFamily.value(),        // graphics queue family
+		queueFamilyIndices.presentationFamily.value(),    // presenttaion queue family
+		queueFamilyIndices.transferFamily.value()         // transfer queue family
+	};
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
 
 	float queuePriority{ 1.0f };
@@ -214,6 +222,7 @@ void Application::createLogicalDevice() {
 		queueCreateInfo.queueFamilyIndex = queueFamily;
 		queueCreateInfo.queueCount = 1;
 		queueCreateInfo.pQueuePriorities = &queuePriority;
+
 		// Append the struct to the vector of queue create info structs (pushes a copy)
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
@@ -247,6 +256,7 @@ void Application::createLogicalDevice() {
 	// Get the queue handles:
 	vkGetDeviceQueue(vulkanLogicalDevice, queueFamilyIndices.graphicsFamily.value(), 0, &deviceGraphicsQueue);
 	vkGetDeviceQueue(vulkanLogicalDevice, queueFamilyIndices.presentationFamily.value(), 0, &devicePresentationQueue);
+	vkGetDeviceQueue(vulkanLogicalDevice, queueFamilyIndices.transferFamily.value(), 0, &deviceTransferQueue);
 	std::cout << "> Retrieved queue handles.\n";
 
 }
@@ -637,6 +647,100 @@ void Application::createFramebuffers() {
 	}
 }
 
+/// <summary>
+/// A custom abstraction that helps create the various buffers we need (eg: vertex buffer, staging buffer).
+/// </summary>
+/// <param name="size"> = Size in bytes needed to allocate the buffer. </param>
+/// <param name="usage"> = Specifies the usage of this buffer (eg: VK_BUFFER_USAGE_VERTEX_BUFFER_BIT). vert</param>
+/// <param name="queueFamilyIndices"> = (Optional) Pass the indices of the queue families that can access this buffer. Passing this field will switch the 'sharingMode' of the buffer to CONCURRENT mode instead of EXCLUSIVE mode. </param>
+/// <param name="memoryProperties"> = The memory properties of this buffer (eg: HOST_VISIBLE, DEVICE_LOCAL, etc.) </param>
+/// <param name="outVkBuffer"> = (Output) The resultant buffer. </param>
+/// <param name="outBufferMemory"> = (Output) The resultant memory allocated for the buffer. </param>
+void Application::createBuffer(VkDevice logicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, VkBuffer& outVkBuffer, VkDeviceMemory& outBufferMemory, const std::vector<uint32_t>& queueFamilyIndices) {
+
+	// Specify the buffer creation
+	VkBufferCreateInfo bufferCreateInfo{};
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.size = size;
+	bufferCreateInfo.usage = usage;
+	if (queueFamilyIndices.empty()) {
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferCreateInfo.pQueueFamilyIndices = nullptr;
+		bufferCreateInfo.queueFamilyIndexCount = 0;
+	}
+	else {
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+		bufferCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+		bufferCreateInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size());
+	}
+
+	// Create the buffer
+	VkResult result = vkCreateBuffer(logicalDevice, &bufferCreateInfo, nullptr, &outVkBuffer);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to create buffer!");
+	}
+
+	// Get memory requirememts for this buffer
+	VkMemoryRequirements memRequirements{};
+	vkGetBufferMemoryRequirements(logicalDevice, outVkBuffer, &memRequirements);
+
+#ifdef NDEBUG
+// Release mode
+#else
+	// Debug mode
+	std::cout << "\nDEBUG LOG: Suitable memory-type bits fetched for buffer allocation (binary) = " << 
+		std::bitset<32>(memRequirements.memoryTypeBits) << "\n";
+#endif
+
+	// Allocate the memory for this buffer
+	VkMemoryAllocateInfo memAllocateInfo{};
+	memAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocateInfo.allocationSize = memRequirements.size;
+	memAllocateInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, memoryProperties);
+
+	result = vkAllocateMemory(logicalDevice, &memAllocateInfo, nullptr, &outBufferMemory);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to allocate device memory for buffer!");
+	}
+
+	// Bind the allocated memory and the buffer created
+	vkBindBufferMemory(logicalDevice, outVkBuffer, outBufferMemory, 0);
+}
+
+/// @brief Function to copy the contents from one buffer to another.
+void Application::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+	// Begin the transfer command buffer
+	VkCommandBufferBeginInfo transferCommandBufferBeginInfo{};
+	transferCommandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	transferCommandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(vulkanTransferCommandBuffer, &transferCommandBufferBeginInfo);
+
+	// Record the copy command to the transfer command buffer
+	VkBufferCopy bufferCopy{};
+	bufferCopy.srcOffset = 0;
+	bufferCopy.dstOffset = 0;
+	bufferCopy.size = size;
+	vkCmdCopyBuffer(vulkanTransferCommandBuffer, srcBuffer, dstBuffer, 1, &bufferCopy);
+
+	// End the command buffer (stop recording, as it only contains the one copy command)
+	vkEndCommandBuffer(vulkanTransferCommandBuffer);
+
+	// Submit the command to the transfer queue and wait for its completion
+	VkSubmitInfo submitCommandInfo{};
+	submitCommandInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitCommandInfo.pCommandBuffers = &vulkanTransferCommandBuffer;
+	submitCommandInfo.commandBufferCount = 1;
+
+	vkQueueSubmit(deviceTransferQueue, 1, &submitCommandInfo, nullptr);
+	vkQueueWaitIdle(deviceTransferQueue);  // Waits for the transfer queue to become idle
+	/*
+		NOTE:
+		A fence would allow you to schedule multiple transfers simultaneously and wait for all of them complete, 
+		instead of executing one at a time. That may give the driver more opportunities to optimize.
+	*/
+
+}
+
 bool Application::isPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice) {
 	// We're deeming a GPU as suitable if it has the Queue Families that we need (eg. Graphics family)
 	QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
@@ -651,6 +755,8 @@ bool Application::isPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice) {
 	return indices.isComplete() && deviceExtensionsSupported && swapChainSupportAdequate;
 }
 
+/// @brief Finds the required Queue Family indices in the Physical-Device.
+/// @brief Tries to find a Transfer queue family thats different from a Graphics queue family.
 QueueFamilyIndices Application::findQueueFamilies(VkPhysicalDevice physicalDevice) {
 	QueueFamilyIndices indices;
 
@@ -661,6 +767,9 @@ QueueFamilyIndices Application::findQueueFamilies(VkPhysicalDevice physicalDevic
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
 
 	// Need to find at least one queue family that supports VK_QUEUE_GRAPHICS_BIT
+	// And one queue family that supports VK_QUEUE_TRANSFER_BIT that is not the same family as the VK_QUEUE_GRAPHICS_BIT
+	bool foundGraphicsQueue{ false };
+	bool foundPresentationQueue{ false };
 	size_t i{ 0 };
 	for (const auto& queueFamily : queueFamilies) {
 		// Check for presentation support by the queue family
@@ -668,19 +777,45 @@ QueueFamilyIndices Application::findQueueFamilies(VkPhysicalDevice physicalDevic
 		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, vulkanSurface, &presentationSupport);
 
 		// Check if queue family supports graphics queue
-		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+		if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && !foundGraphicsQueue) {
 			indices.graphicsFamily = i;
+			foundGraphicsQueue = true;
 		}
 		// If current queue family supports presentation, set its family index
-		if (presentationSupport) {
+		if (presentationSupport && !foundPresentationQueue) {
 			indices.presentationFamily = i;
+			foundPresentationQueue = true;
 		}
-		if (indices.isComplete()) {
-			// All required queues were found
-			break;
+		// Look for dedicated transfer queue families (no graphics queue)
+		if ((queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) && !(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+			indices.transferFamily = i;
 		}
 		++i;
 	}
+
+	// If couldn't find a dedicated transfer queue, fallback to the graphics queue family
+	// Note: Graphics queue families & Compute queue families are guaranteed to have a Transfer queue family
+	if (!indices.transferFamily.has_value()) {
+		indices.transferFamily = indices.graphicsFamily.value();
+	}
+
+	// Check if all the queue families were found
+	if (!indices.isComplete()) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to find required Queue Families!");
+	}
+
+#ifdef NDEBUG
+	// Release Mode
+#else
+	// Debug Mode
+	if (!queueFamiliesLoggedToDebugAlready) {
+		std::cout << "\nDEBUG LOG: Assigned the following queue families:\n";
+		std::cout << "DEBUG LOG: Graphics queue family = " << indices.graphicsFamily.value() << "\n";
+		std::cout << "DEBUG LOG: Presentation queue family = " << indices.presentationFamily.value() << "\n";
+		std::cout << "DEBUG LOG: Transfer queue family = " << indices.transferFamily.value() << "\n\n";
+		queueFamiliesLoggedToDebugAlready = true;
+	}
+#endif
 
 	return indices;
 }
@@ -815,108 +950,100 @@ VkShaderModule Application::createShaderModule(const std::vector<char>& compiled
 	return shaderModule;
 }
 
-void Application::createCommandPool() {
+/// @brief Creates the pool for creating graphics command buffers from.
+void Application::createGraphicsCommandPool() {
 	// Fetch the queue families of the GPU
 	QueueFamilyIndices queueFamilies = findQueueFamilies(vulkanPhysicalDevice);
 
-	// Specify how to create the Command Pool
-	VkCommandPoolCreateInfo commandPoolCreateInfo{};
-	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	// Specify how to create the Graphics Command Pool
+	VkCommandPoolCreateInfo graphicsCommandPoolCreateInfo{};
+	graphicsCommandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	// This flag provides more fine grain control over individual command buffer in this pool
-	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	graphicsCommandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	// Each command pool can only allocate command buffers that are submitted on a single type of queue (In this case Graphics queue for draw cmds)
-	commandPoolCreateInfo.queueFamilyIndex = queueFamilies.graphicsFamily.value();
+	graphicsCommandPoolCreateInfo.queueFamilyIndex = queueFamilies.graphicsFamily.value();
 
 
-	// Create the Command Pool
-	VkResult result = vkCreateCommandPool(vulkanLogicalDevice, &commandPoolCreateInfo, nullptr, &vulkanCommandPool);
+	// Create the Graphics Command Pool
+	VkResult result = vkCreateCommandPool(vulkanLogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &vulkanGraphicsCommandPool);
 	if (result != VK_SUCCESS) {
-		throw std::runtime_error("RUNTIME ERROR: Failed to create Command Pool.");
+		throw std::runtime_error("RUNTIME ERROR: Failed to create Graphics command pool.");
 	}
-	std::cout << "> Created Vulkan command pool successfully.\n";
+	std::cout << "> Created Vulkan graphics command pool successfully.\n";
+}
+
+/// @brief Creates the pool for creating transfer command buffers from.
+void Application::createTransferCommandPool() {
+	// Fetch the queue families from the GPU
+	QueueFamilyIndices queueFamilies = findQueueFamilies(vulkanPhysicalDevice);
+
+	// Specify how to create the Transfer Command Pool
+	VkCommandPoolCreateInfo transferCommandPoolCreateInfo{};
+	transferCommandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	// This flag provides more fine grain control over individual command buffer in this pool
+	transferCommandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	transferCommandPoolCreateInfo.queueFamilyIndex = queueFamilies.transferFamily.value();
+
+	// Create the Transfer Command Pool
+	VkResult result = vkCreateCommandPool(vulkanLogicalDevice, &transferCommandPoolCreateInfo, nullptr, &vulkanTransferCommandPool);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to create Transfer command pool!");
+	}
+	std::cout << "> Created Vulkan transfer command pool successfully.\n";
+
 }
 
 void Application::createVertexBuffer() {
-	// Specify the creation of vertex buffer
-	VkBufferCreateInfo vertexBufferCreateInfo{};
-	vertexBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertexBufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	vertexBufferCreateInfo.size = sizeof(vertices.at(0)) * vertices.size();
-	vertexBufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	// Find the queue family indices that share the buffer
+	QueueFamilyIndices indices = findQueueFamilies(vulkanPhysicalDevice);
+	std::vector<uint32_t> queueFamilyIndices = { indices.graphicsFamily.value(), indices.transferFamily.value() };
 
-	// Create the vertex buffer
-	VkResult result = vkCreateBuffer(vulkanLogicalDevice, &vertexBufferCreateInfo, nullptr, &vertexBuffer);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error("RUNTIME ERROR: Failed to create Vertex Buffer!");
-	}
-	std::cout << "> Created vertex buffer successfully.\n";
+	// Size of the buffer needed for vertex and staging buffers
+	VkDeviceSize bufferSize = sizeof(vertices.at(0)) * sizeof(vertices);
 
-	// Get the memory requirements of the buffer we want to allocate memory for
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(vulkanLogicalDevice, vertexBuffer, &memRequirements);
+	// Create Staging Buffer on CPU Visible Memory (Host will upload the vertex data into this buffer)
+	VkBuffer stagingBuffer{};
+	VkDeviceMemory stagingBufferMemory{};
+	createBuffer(
+		vulkanLogicalDevice,
+		bufferSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,  // Buffer can be used as Source in a memory transfer operation.
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer,
+		stagingBufferMemory
+	);
+	void* data;
+	vkMapMemory(vulkanLogicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+	// Copy the vertex data to the mapped memory via memcpy:
+	memcpy(data, vertices.data(), (size_t)bufferSize);
+	// Unmap the memory after writing the data
+	vkUnmapMemory(vulkanLogicalDevice, stagingBufferMemory);
 
-#ifdef NDEBUG
-// Release mode
-#else
-	// Debug mode
-	std::cout << "DEBUG LOG: Suitable memory-type bits fetched for Vertex Buffer allocation (binary): " << 
-		std::bitset<32>(memRequirements.memoryTypeBits) << "\n";
-#endif
 
-	// Allocate the memory for the Vertex Buffer
-	VkMemoryAllocateInfo memAllocateInfo{};
-	memAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memAllocateInfo.allocationSize = memRequirements.size;
-	memAllocateInfo.memoryTypeIndex = findMemoryType(
-		memRequirements.memoryTypeBits, 
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+	// Create the Vertex buffer	on GPU-Only Visible Memory
+	createBuffer(
+		vulkanLogicalDevice,
+		bufferSize,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		vertexBuffer,
+		vertexBufferMemory,
+		queueFamilyIndices
 	);
 
-	result = vkAllocateMemory(vulkanLogicalDevice, &memAllocateInfo, nullptr, &vertexBufferMemory);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error("RUNTIME ERROR: Failed to allocate memory for Vertex Buffer!");
-	}
-	std::cout << "> Allocated memory for vertex buffer successfully.\n";
+	// Copy the data from Staging Buffer to Vertex Buffer (CPU Visible memory -> High performance memory)
+	copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 
-	// Once memory is allocated for the buffer, we can now associate (bind) this memory with the buffer:
-	// Since this memory was allocated specifically for this buffer, the offset is 0.
-	result = vkBindBufferMemory(vulkanLogicalDevice, vertexBuffer, vertexBufferMemory, 0);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error("RUNTIME ERROR: Failed to bind the Vertex Buffer memory with the Vertex Buffer!");
-	}
-	std::cout << "> Bound the vertex buffer memory to the vertex buffer successfully.\n";
+	// Destroy the Staging buffer
+	vkDestroyBuffer(vulkanLogicalDevice, stagingBuffer, nullptr);
+	vkFreeMemory(vulkanLogicalDevice, stagingBufferMemory, nullptr);
 
-
-	// Fill the vertex buffer with the actual vertex data...
-
-	// We first map the buffer memory into CPU accessible memory:
-	void* data;
-	vkMapMemory(vulkanLogicalDevice, vertexBufferMemory, 0, vertexBufferCreateInfo.size, 0, &data);
-	// Copy the vertex data to the mapped memory via memcpy:
-	memcpy(data, vertices.data(), (size_t)vertexBufferCreateInfo.size);
-	// Unmap the memory after writing the data
-	vkUnmapMemory(vulkanLogicalDevice, vertexBufferMemory);
-	/*
-		NOTE:
-		It is also possible that writes to the buffer are not visible in the mapped memory yet. 
-		There are two ways to deal with that problem:
-
-		- Use a memory heap that is host coherent, indicated with VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-		- Call vkFlushMappedMemoryRanges after writing to the mapped memory, and call vkInvalidateMappedMemoryRanges before reading from the mapped memory
-
-		We went for the first approach, which ensures that the mapped memory always matches the contents of the allocated memory. 
-		Do keep in mind that this may lead to slightly worse performance than explicit flushing, 
-		but we'll see why that doesn't matter in the future.
-
-		Flushing memory ranges or using a coherent memory heap means that the driver will be aware of our writes to the buffer, 
-		but it doesn't mean that they are actually visible on the GPU yet. The transfer of data to the GPU is an operation that happens 
-		in the background and the specification simply tells us that it is guaranteed to be complete as of the next call to 'vkQueueSubmit'.
-	*/
 }
 
-void Application::createCommandBuffers() {
+/// @brief Creates Graphics command buffers from the graphics command pool.
+void Application::createGraphicsCommandBuffers() {
 
-	vulkanCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+	vulkanGraphicsCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
 	// Specify how to allocate command buffers and from which command pool
 	/*
@@ -924,18 +1051,36 @@ void Application::createCommandBuffers() {
 		- VK_COMMAND_BUFFER_LEVEL_PRIMARY:		Can be submitted to a queue for execution, but cannot be called from other command buffers.
 		- VK_COMMAND_BUFFER_LEVEL_SECONDARY:	Cannot be submitted directly, but can be called from primary command buffers
 	*/
-	VkCommandBufferAllocateInfo commandBuffersAllocateInfo{};
-	commandBuffersAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	commandBuffersAllocateInfo.commandPool = vulkanCommandPool;
-	commandBuffersAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBuffersAllocateInfo.commandBufferCount = (uint32_t)vulkanCommandBuffers.size();
+	VkCommandBufferAllocateInfo graphicsCommandBuffersAllocateInfo{};
+	graphicsCommandBuffersAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	graphicsCommandBuffersAllocateInfo.commandPool = vulkanGraphicsCommandPool;
+	graphicsCommandBuffersAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	graphicsCommandBuffersAllocateInfo.commandBufferCount = (uint32_t)vulkanGraphicsCommandBuffers.size();
 
-	// Allocate the Command Buffer(s):
-	VkResult result = vkAllocateCommandBuffers(vulkanLogicalDevice, &commandBuffersAllocateInfo, vulkanCommandBuffers.data());
+	// Allocate the Graphics Command Buffer(s):
+	VkResult result = vkAllocateCommandBuffers(vulkanLogicalDevice, &graphicsCommandBuffersAllocateInfo, vulkanGraphicsCommandBuffers.data());
 	if (result != VK_SUCCESS) {
-		throw std::runtime_error("RUNTIME ERROR: Failed to allocate Command Buffers from Pool!\n");
+		throw std::runtime_error("RUNTIME ERROR: Failed to allocate Graphics Command Buffers from the Graphics Command Pool!\n");
 	}
-	std::cout << "> Created Vulkan command buffers successfully.\n";
+	std::cout << "> Allocated Vulkan graphics command buffer(s), from graphics command pool successfully.\n";
+
+}
+
+/// @brief Creates Transfer command buffer from the transfer command pool.
+void Application::createTransferCommandBuffer() {
+	// Specify how and from which pool to allocate this buffer
+	VkCommandBufferAllocateInfo transferCommandBufferAllocateInfo{};
+	transferCommandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	transferCommandBufferAllocateInfo.commandPool = vulkanTransferCommandPool;
+	transferCommandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	transferCommandBufferAllocateInfo.commandBufferCount = 1;
+
+	// Allocate the Transfer Command Buffer
+	VkResult result = vkAllocateCommandBuffers(vulkanLogicalDevice, &transferCommandBufferAllocateInfo, &vulkanTransferCommandBuffer);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to allocate Transfer Command Buffer from the Transfer Command Pool!\n");
+	}
+	std::cout << "> Allocated Vulkan transfer command buffer, from transfer command pool successfully.\n";
 
 }
 
@@ -1029,8 +1174,8 @@ void Application::drawFrame() {
 	vkResetFences(vulkanLogicalDevice, 1, &inFlightFences.at(currentFrame));
 
 	// Recording the Command Buffer
-	vkResetCommandBuffer(vulkanCommandBuffers.at(currentFrame), 0);
-	recordCommandBuffer(vulkanCommandBuffers.at(currentFrame), swapChainImageIndex);
+	vkResetCommandBuffer(vulkanGraphicsCommandBuffers.at(currentFrame), 0);
+	recordCommandBuffer(vulkanGraphicsCommandBuffers.at(currentFrame), swapChainImageIndex);
 
 	// Submit the command buffer:
 	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.at(currentFrame) };  // wait semaphores
@@ -1044,7 +1189,7 @@ void Application::drawFrame() {
 	commandBufferSubmitInfo.pWaitSemaphores = waitSemaphores;
 	commandBufferSubmitInfo.pWaitDstStageMask = waitStages;
 	commandBufferSubmitInfo.pSignalSemaphores = signalSemaphores;
-	commandBufferSubmitInfo.pCommandBuffers = &vulkanCommandBuffers.at(currentFrame);
+	commandBufferSubmitInfo.pCommandBuffers = &vulkanGraphicsCommandBuffers.at(currentFrame);
 	commandBufferSubmitInfo.commandBufferCount = 1;
 
 	result = vkQueueSubmit(deviceGraphicsQueue, 1, &commandBufferSubmitInfo, inFlightFences.at(currentFrame));
@@ -1098,6 +1243,33 @@ uint32_t Application::findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags 
 		if ((typefilter & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
 			// Found a suitable memory type for the vertex buffer
 			// Also found a suitable memory type to write our buffer data to
+
+#ifdef NDEBUG
+			// Release Mode
+#else
+			// Debug Mode
+			std::cout << "\nDEBUG LOG: Found suitable memory-type for Buffer Memory allocation.\n";
+			std::cout << "DEBUG LOG: Requested Memory Properties = ";
+			if (properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+				std::cout << "DEVICE_LOCAL  ";
+			if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+				std::cout << "HOST_VISIBLE  ";
+			if (properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+				std::cout << "HOST_COHERENT  ";
+			if (properties & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+				std::cout << "HOST_CACHED  ";
+			if (properties & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+				std::cout << "LAZILY_ALLOCATED  ";
+			if (properties & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+				std::cout << "PROTECTED  ";
+			if (properties & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+				std::cout << "DEVICE_COHERENT_AMD  ";
+			if (properties & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+				std::cout << "DEVICE_UNCACHED_AMD  ";
+			std::cout << "\n";
+			std::cout << "DEBUG LOG: Chosen Memory Type = " << i << " (Refer VHCV for more info)\n";
+#endif
+
 			return i;
 		}
 	}
