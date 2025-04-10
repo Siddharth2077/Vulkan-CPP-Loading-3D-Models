@@ -20,6 +20,7 @@
 struct QueueFamilyIndices;
 struct SwapChainSupportDetails;
 struct Vertex;
+struct UniformBufferObject;
 
 // APPLICATION CLASS
 class Application {
@@ -190,6 +191,13 @@ struct Vertex {
 
 		return inputAttributeDescriptions;
 	}
+};
+
+// UBO definition
+struct UniformBufferObject {
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 proj;
 };
 
 // Indexed Vertex data of the rectangle for the vertex buffer
