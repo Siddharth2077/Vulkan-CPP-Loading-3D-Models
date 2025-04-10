@@ -1,4 +1,5 @@
 # Rendering 3D Models in Vulkan C++
+> Progress made so far visualized using a mermaid diagram.
 ```mermaid
 graph TB
     User((User))
