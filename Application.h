@@ -1,6 +1,8 @@
 #pragma once
 
 #define GLFW_INCLUDE_VULKAN
+#define GLM_FORCE_RADIANS
+#include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <stdexcept>
@@ -13,8 +15,10 @@
 #include <limits>
 #include <vector>
 #include <bitset>
+#include <chrono>
 #include <array>
 #include <set>
+
 
 // Forward declarations
 struct QueueFamilyIndices;
@@ -48,6 +52,7 @@ private:
 	VkColorSpaceKHR vulkanSwapChainImageColorspace;
 	VkExtent2D vulkanSwapChainExtent;
 	VkRenderPass vulkanRenderPass = VK_NULL_HANDLE;
+	VkDescriptorSetLayout vulkanDescriptorSetLayout = VK_NULL_HANDLE;
 	VkPipelineLayout vulkanPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline vulkanGraphicsPipeline = VK_NULL_HANDLE;
 	VkCommandPool vulkanGraphicsCommandPool = VK_NULL_HANDLE;  // graphics command pool
@@ -61,6 +66,9 @@ private:
 	VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
 	VkBuffer indexBuffer = VK_NULL_HANDLE;  // index buffer
 	VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+	std::vector<VkBuffer> uniformBuffers;  // uniform buffers (size based on frames in flight)
+	std::vector<VkDeviceMemory> uniformBuffersMemory;
+	std::vector<void*> uniformBuffersMapped;
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -100,6 +108,7 @@ private:
 	void createSwapChain();
 	void createSwapChainImageViews();
 	void createRenderPass();
+	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
 	void createFramebuffers();
 	VkShaderModule createShaderModule(const std::vector<char>& compiledShaderCode);
@@ -107,6 +116,8 @@ private:
 	void createTransferCommandPool();
 	void createVertexBuffer();
 	void createIndexBuffer();
+	void createUniformBuffers();
+	void updateUniformBuffers(uint32_t currentImage);
 	void createGraphicsCommandBuffers();
 	void createTransferCommandBuffer();
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex);
