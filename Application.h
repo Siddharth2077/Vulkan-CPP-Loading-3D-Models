@@ -2,13 +2,17 @@
 
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#define GLM_FORCE_LEFT_HANDED
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
 #include <stdexcept>
 #include <algorithm>
 #include <optional>
 #include <iostream>
+#include <iomanip>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -51,8 +55,7 @@ private:
 	VkFormat vulkanSwapChainImageFormat;
 	VkColorSpaceKHR vulkanSwapChainImageColorspace;
 	VkExtent2D vulkanSwapChainExtent;
-	VkRenderPass vulkanRenderPass = VK_NULL_HANDLE;
-	VkDescriptorSetLayout vulkanDescriptorSetLayout = VK_NULL_HANDLE;
+	VkRenderPass vulkanRenderPass = VK_NULL_HANDLE;	
 	VkPipelineLayout vulkanPipelineLayout = VK_NULL_HANDLE;
 	VkPipeline vulkanGraphicsPipeline = VK_NULL_HANDLE;
 	VkCommandPool vulkanGraphicsCommandPool = VK_NULL_HANDLE;  // graphics command pool
@@ -69,6 +72,10 @@ private:
 	std::vector<VkBuffer> uniformBuffers;  // uniform buffers (size based on frames in flight)
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 	std::vector<void*> uniformBuffersMapped;
+	VkDescriptorSetLayout vulkanDescriptorSetLayout = VK_NULL_HANDLE;  // descriptor set layout
+	VkDescriptorPool vulkanDescriptorPool = VK_NULL_HANDLE;  // descriptor pool
+	std::vector<VkDescriptorSet> vulkanDescriptorSets;  // descriptor sets
+
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -78,6 +85,7 @@ private:
 	const std::vector<const char*> vulkanValidationLayers = {
 		"VK_LAYER_KHRONOS_validation"
 	};
+
 	// List of physical device extensions to check/enable:
 	const std::vector<const char*> deviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -117,6 +125,8 @@ private:
 	void createVertexBuffer();
 	void createIndexBuffer();
 	void createUniformBuffers();
+	void createDescriptorPool();
+	void createDescriptorSets();
 	void updateUniformBuffers(uint32_t currentImage);
 	void createGraphicsCommandBuffers();
 	void createTransferCommandBuffer();
@@ -206,9 +216,9 @@ struct Vertex {
 
 // UBO definition
 struct UniformBufferObject {
-	glm::mat4 model;
-	glm::mat4 view;
-	glm::mat4 proj;
+	alignas(16) glm::mat4 model;
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::mat4 proj;
 };
 
 // Indexed Vertex data of the rectangle for the vertex buffer
@@ -216,15 +226,10 @@ const std::vector<Vertex> vertices = {
 	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},  // Top Left: red
 	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Top Right: green
 	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // Bottom Right: blue
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}  // Bottom Left: white
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}}  // Bottom Left: white
 };
 const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0
 };
 
-// Vertex data of the triangle for the vertex buffer
-//const std::vector<Vertex> vertices = {
-//	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-//	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-//	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-//};
+

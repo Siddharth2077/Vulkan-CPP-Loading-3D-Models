@@ -36,6 +36,8 @@ void Application::initVulkan() {
 	createVertexBuffer();
 	createIndexBuffer();
 	createUniformBuffers();
+	createDescriptorPool();
+	createDescriptorSets();
 	createGraphicsCommandBuffers();
 	createSynchronizationObjects();
 }
@@ -58,6 +60,7 @@ void Application::cleanup() {
 		vkFreeMemory(vulkanLogicalDevice, uniformBuffersMemory.at(i), nullptr);
 		uniformBuffersMapped.at(i) = nullptr;
 	}
+	vkDestroyDescriptorPool(vulkanLogicalDevice, vulkanDescriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(vulkanLogicalDevice, vulkanDescriptorSetLayout, nullptr);
 
 	vkDestroyPipeline(vulkanLogicalDevice, vulkanGraphicsPipeline, nullptr);
@@ -471,7 +474,7 @@ void Application::createDescriptorSetLayout() {
 	uboLayoutBinding.binding = 0;
 	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	uboLayoutBinding.descriptorCount = 1;
-	uboLayoutBinding.stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	uboLayoutBinding.pImmutableSamplers = nullptr;  // For image sampling descriptors (optional)
 
 	// Create the Descriptor Set Layout
@@ -484,7 +487,7 @@ void Application::createDescriptorSetLayout() {
 	if (result != VK_SUCCESS) {
 		throw std::runtime_error("RUNTIME ERROR: Failed to create Descriptor Set Layout!");
 	}
-	std::cout << "> Created Vulkan descriptor set layout successfully.";
+	std::cout << "> Created Vulkan descriptor set layout successfully.\n";
 }
 
 void Application::createGraphicsPipeline() {
@@ -570,7 +573,7 @@ void Application::createGraphicsPipeline() {
 	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
 	// Vulkan uses the order of the vertices when projected on to the screen to determine front/back faces
 	// We're telling Vulkan what order (clockwise/anti-clockwise) must be treated as front face [OBJ, GLTF etc. use anti-clockwise]
-	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	rasterizer.depthBiasEnable = VK_FALSE;
 	rasterizer.depthBiasConstantFactor = 0.0f; // Optional
 	rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -604,8 +607,8 @@ void Application::createGraphicsPipeline() {
 	// Creating an empty pipeline layout for now
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCreateInfo.pSetLayouts = &vulkanDescriptorSetLayout;  // Descriptor set layouts
 	pipelineLayoutCreateInfo.setLayoutCount = 1;  // Descriptor set layouts count
+	pipelineLayoutCreateInfo.pSetLayouts = &vulkanDescriptorSetLayout;  // Descriptor set layouts
 	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
 	// Create the pipeline layout
@@ -1124,6 +1127,10 @@ void Application::createIndexBuffer() {
 }
 
 void Application::createUniformBuffers() {
+	// Find the queue family indices that will share the Index Buffer
+	//QueueFamilyIndices queueFamilies = findQueueFamilies(vulkanPhysicalDevice);
+	//std::vector<uint32_t> queueFamilyIndices = { queueFamilies.graphicsFamily.value(), queueFamilies.transferFamily.value() };
+
 	// Memory required for the UBO
 	VkDeviceSize uboBufferSize = sizeof(UniformBufferObject);
 
@@ -1141,6 +1148,7 @@ void Application::createUniformBuffers() {
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			uniformBuffers.at(i),
 			uniformBuffersMemory.at(i)
+			//queueFamilyIndices
 		);
 
 		// Persistent Memory Mapping (we'll be accessing the UBO every draw call)
@@ -1148,27 +1156,115 @@ void Application::createUniformBuffers() {
 	}
 }
 
+void Application::createDescriptorPool() {
+	// Type of descriptors in our pool, plus the size of the pool
+	VkDescriptorPoolSize descriptorPoolSize{};
+	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorPoolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+	// Create the Descriptor pool
+	VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+	descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	descriptorPoolCreateInfo.poolSizeCount = 1;
+	descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
+	descriptorPoolCreateInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+	VkResult result = vkCreateDescriptorPool(vulkanLogicalDevice, &descriptorPoolCreateInfo, nullptr, &vulkanDescriptorPool);
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to create Descriptor Pool!");
+	}
+	std::cout << "> Created Vulkan descriptor pool successfully.\n";
+}
+
+void Application::createDescriptorSets() {
+	// Descriptor Layout for each Descriptor Set
+	std::vector<VkDescriptorSetLayout> descriptorSetLayouts(MAX_FRAMES_IN_FLIGHT, vulkanDescriptorSetLayout);
+
+	// Allocate Descriptor Sets
+	VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+	descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocInfo.descriptorPool = vulkanDescriptorPool;
+	descriptorSetAllocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+	descriptorSetAllocInfo.pSetLayouts = descriptorSetLayouts.data();
+
+	vulkanDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+	VkResult result = vkAllocateDescriptorSets(vulkanLogicalDevice, &descriptorSetAllocInfo, vulkanDescriptorSets.data());
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("RUNTIME ERROR: Failed to allocate Descriptor Sets!");
+	}
+	std::cout << "> Created Vulkan descriptor sets successfully.\n";
+
+	// Populate every descriptor
+	for (size_t i{ 0 }; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		VkDescriptorBufferInfo descriptorBufferInfo{};
+		descriptorBufferInfo.buffer = uniformBuffers.at(i);
+		descriptorBufferInfo.offset = 0;
+		descriptorBufferInfo.range = sizeof(UniformBufferObject);
+
+		VkWriteDescriptorSet writeDescriptorSet{};
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.dstSet = vulkanDescriptorSets.at(i);  // the descriptor set to write to
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
+		writeDescriptorSet.pImageInfo = nullptr;  // optional
+		writeDescriptorSet.pTexelBufferView = nullptr;  // optional
+
+		vkUpdateDescriptorSets(vulkanLogicalDevice, 1, &writeDescriptorSet, 0, nullptr);
+
+		std::cout << "> Updated descriptor set " << i << "\n";
+	}
+}
+
 void Application::updateUniformBuffers(uint32_t currentImage) {
-	// Declared only once in global static memory
-	// Gets the time when first called (in 1st draw call)
 	static auto startTime = std::chrono::high_resolution_clock::now();
 
-	// Get the delta-time
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
 	UniformBufferObject ubo{};
-	// Rotate about Z-Axis 90 degrees a second
-	ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f) * deltaTime, glm::vec3(0, 0, 1.0f));
-	// View transformation (Eye position and angle)
-	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.1f, 0.0f));
-	// Perspectivge projection matrix
-	ubo.proj = glm::perspective(glm::radians(55.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 10.0f);
+	ubo.model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 10.0f);
 	ubo.proj[1][1] *= -1;
 
-	// Copy the newly created UBO into the memory
+
+	//std::cout << "Model" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.model[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
+	//std::cout << "View" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.view[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
+	//std::cout << "Projection" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.proj[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
 	memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+
 }
+
 
 /// @brief Creates Graphics command buffers from the graphics command pool.
 void Application::createGraphicsCommandBuffers() {
@@ -1270,6 +1366,9 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	scissor.extent = vulkanSwapChainExtent;
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+	// Bind descriptor sets
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipelineLayout, 0, 1, &vulkanDescriptorSets[currentFrame], 0, nullptr);
+
 	// Issue the Draw command for the Triangle
 	// Use 1 for instanceCount if NOT using instanced rendering
 	//vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
@@ -1304,6 +1403,9 @@ void Application::drawFrame() {
 		throw std::runtime_error("RUNTIME ERROR: Failed to acquire the next image from the swapchain!");
 	}
 
+	// Updating the Uniform Buffers
+	updateUniformBuffers(currentFrame);
+
 	// Only reset the fence if we are submitting work (avoiding a potential Deadlock)
 	// After waiting, we need to manually reset the fence to the 'unisgnalled' state
 	vkResetFences(vulkanLogicalDevice, 1, &inFlightFences.at(currentFrame));
@@ -1316,9 +1418,6 @@ void Application::drawFrame() {
 	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.at(currentFrame) };  // wait semaphores
 	VkSemaphore signalSemaphores[] = { renderFinishedSemaphores.at(currentFrame) };  // signal semaphores
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };  // pipeline wait stages
-
-	// Updating the Uniform Buffers
-	updateUniformBuffers(currentFrame);
 
 	VkSubmitInfo commandBufferSubmitInfo{};  // command submit info
 	commandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
