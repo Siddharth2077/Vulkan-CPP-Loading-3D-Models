@@ -3,8 +3,8 @@
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_FORCE_LEFT_HANDED
+//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#define GLM_FORCE_LEFT_HANDED
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <optional>
 #include <iostream>
+#include <iomanip>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -225,9 +226,10 @@ const std::vector<Vertex> vertices = {
 	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},  // Top Left: red
 	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Top Right: green
 	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // Bottom Right: blue
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}  // Bottom Left: white
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}}  // Bottom Left: white
 };
 const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0
 };
+
 

@@ -474,7 +474,7 @@ void Application::createDescriptorSetLayout() {
 	uboLayoutBinding.binding = 0;
 	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	uboLayoutBinding.descriptorCount = 1;
-	uboLayoutBinding.stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	uboLayoutBinding.pImmutableSamplers = nullptr;  // For image sampling descriptors (optional)
 
 	// Create the Descriptor Set Layout
@@ -1230,9 +1230,41 @@ void Application::updateUniformBuffers(uint32_t currentImage) {
 	ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 10.0f);
 	ubo.proj[1][1] *= -1;
 
+
+	//std::cout << "Model" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.model[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
+	//std::cout << "View" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.view[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
+	//std::cout << "Projection" << ":\n";
+	//for (int row = 0; row < 4; ++row) {
+	//	std::cout << "| ";
+	//	for (int col = 0; col < 4; ++col) {
+	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
+	//			<< ubo.proj[col][row] << " ";
+	//	}
+	//	std::cout << "|\n";
+	//}
+
 	memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 
 }
+
 
 /// @brief Creates Graphics command buffers from the graphics command pool.
 void Application::createGraphicsCommandBuffers() {
@@ -1317,9 +1349,6 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	// Bind the Index Buffer
 	vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-	// Bind descriptor sets
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipelineLayout, 0, 1, &vulkanDescriptorSets[currentFrame], 0, nullptr);
-
 
 	// We specified viewport and scissor state for this pipeline to be dynamic. 
 	// So we need to set them in the command buffer before issuing our draw command.
@@ -1336,6 +1365,9 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	scissor.offset = { 0,0 };
 	scissor.extent = vulkanSwapChainExtent;
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	// Bind descriptor sets
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipelineLayout, 0, 1, &vulkanDescriptorSets[currentFrame], 0, nullptr);
 
 	// Issue the Draw command for the Triangle
 	// Use 1 for instanceCount if NOT using instanced rendering
