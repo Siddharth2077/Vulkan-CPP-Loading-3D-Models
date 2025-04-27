@@ -37,9 +37,11 @@ public:
 private:
 	// Members:
 	GLFWwindow* window;
+	const char* APPLICATION_NAME = "Vulkan Application";
 	const uint32_t WIDTH{ 800 };
 	const uint32_t HEIGHT{ 600 };
-	const char* APPLICATION_NAME = "Vulkan Application";
+	const std::string MODEL_PATH = "models/viking-house/model/viking-house-model.obj";
+	const std::string TEXTURE_PATH = "models/viking-house/textures/mat_color.png";
 
 	VkInstance vulkanInstance = VK_NULL_HANDLE;
 	const int MAX_FRAMES_IN_FLIGHT{ 2 };

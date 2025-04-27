@@ -77,7 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\tinyobjloader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -95,7 +95,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\tinyobjloader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -113,7 +113,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\tinyobjloader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -131,7 +131,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\VulkanSDK\1.4.309.0\Include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glm;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\glfw-3.3.8.bin.WIN64\include;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\stb;D:\My Documents\C++ Projects\Vulkan Projects\Libraries\tinyobjloader;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -157,7 +157,12 @@
     <None Include="shaders\vert.spv" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="models\viking-house\textures\mat_color.png" />
+    <Image Include="models\viking-house\textures\mat_ground_ao_optional.jpeg" />
     <Image Include="textures\Vulkan_Texture.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Object Include="models\viking-house\model\final\viking-house-model.obj" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
