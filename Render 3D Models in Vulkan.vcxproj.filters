@@ -19,18 +19,6 @@
     <Filter Include="textures">
       <UniqueIdentifier>{e3528dd1-1a17-44ab-be4d-7693dbf80c9e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="models">
-      <UniqueIdentifier>{98e61b14-584e-4955-bec2-d3ffac42aed5}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="models\viking-house">
-      <UniqueIdentifier>{9943c787-be8b-4682-a431-78d51ae2fedf}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="models\viking-house\model">
-      <UniqueIdentifier>{d8d4b23b-c259-4cc7-9784-8c8976057973}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="models\viking-house\textures">
-      <UniqueIdentifier>{9a485387-790e-4d4e-ada0-648e02be0988}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -66,16 +54,5 @@
     <Image Include="textures\Vulkan_Texture.png">
       <Filter>textures</Filter>
     </Image>
-    <Image Include="models\viking-house\textures\mat_color.png">
-      <Filter>models\viking-house\textures</Filter>
-    </Image>
-    <Image Include="models\viking-house\textures\mat_ground_ao_optional.jpeg">
-      <Filter>models\viking-house\textures</Filter>
-    </Image>
-  </ItemGroup>
-  <ItemGroup>
-    <Object Include="models\viking-house\model\final\viking-house-model.obj">
-      <Filter>models\viking-house\model</Filter>
-    </Object>
   </ItemGroup>
 </Project>

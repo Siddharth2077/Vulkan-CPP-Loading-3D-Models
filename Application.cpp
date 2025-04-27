@@ -1,7 +1,9 @@
 ﻿
 #define STB_IMAGE_IMPLEMENTATION
+#define TINYOBJLOADER_IMPLEMENTATION
 
 #include "Application.h"
+#include <tiny_obj_loader.h>
 #include <stb_image.h>
 
 
@@ -40,6 +42,7 @@ void Application::initVulkan() {
 	createTextureImage();
 	createTextureImageView();
 	createTextureSampler();
+	load3DModel();
 	createVertexBuffer();
 	createIndexBuffer();
 	createUniformBuffers();
@@ -600,7 +603,7 @@ void Application::createGraphicsPipeline() {
 	rasterizer.rasterizerDiscardEnable = VK_FALSE;  // Disable any output to the framebuffer (geometry never passes through the rasterizer)
 	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizer.lineWidth = 1.0f;
-	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.cullMode = RASTERIZER_CULL_MODE;
 	// Vulkan uses the order of the vertices when projected on to the screen to determine front/back faces
 	// We're telling Vulkan what order (clockwise/anti-clockwise) must be treated as front face [OBJ, GLTF etc. use anti-clockwise]
 	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -1324,7 +1327,7 @@ void Application::createVertexBuffer() {
 	std::vector<uint32_t> queueFamilyIndices = { indices.graphicsFamily.value(), indices.transferFamily.value() };
 
 	// Size of the buffer needed for vertex and staging buffers
-	VkDeviceSize bufferSize = sizeof(vertices.at(0)) * sizeof(vertices);
+	VkDeviceSize bufferSize = sizeof(vertices.at(0)) * vertices.size();
 
 	// Create Staging Buffer on CPU Visible Memory (Host will upload the vertex data into this buffer)
 	VkBuffer stagingBuffer{};
@@ -1371,7 +1374,7 @@ void Application::createIndexBuffer() {
 	std::vector<uint32_t> queueFamilyIndices = {queueFamilies.graphicsFamily.value(), queueFamilies.transferFamily.value()};
 
 	// Buffer size of the index buffer
-	VkDeviceSize bufferSize = sizeof(indices.at(0)) * sizeof(indices);
+	VkDeviceSize bufferSize = sizeof(indices.at(0)) * indices.size();
 
 	// Create the Staging Buffer (host visible)
 	VkBuffer stagingBuffer;
@@ -1522,44 +1525,23 @@ void Application::updateUniformBuffers(uint32_t currentImage) {
 	float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
 	UniformBufferObject ubo{};
-	ubo.model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 10.0f);
-	ubo.proj[1][1] *= -1;
-
-
-	//std::cout << "Model" << ":\n";
-	//for (int row = 0; row < 4; ++row) {
-	//	std::cout << "| ";
-	//	for (int col = 0; col < 4; ++col) {
-	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
-	//			<< ubo.model[col][row] << " ";
-	//	}
-	//	std::cout << "|\n";
-	//}
-
-	//std::cout << "View" << ":\n";
-	//for (int row = 0; row < 4; ++row) {
-	//	std::cout << "| ";
-	//	for (int col = 0; col < 4; ++col) {
-	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
-	//			<< ubo.view[col][row] << " ";
-	//	}
-	//	std::cout << "|\n";
-	//}
-
-	//std::cout << "Projection" << ":\n";
-	//for (int row = 0; row < 4; ++row) {
-	//	std::cout << "| ";
-	//	for (int col = 0; col < 4; ++col) {
-	//		std::cout << std::setw(10) << std::fixed << std::setprecision(4)
-	//			<< ubo.proj[col][row] << " ";
-	//	}
-	//	std::cout << "|\n";
-	//}
+	
+	// viking room model
+	if (MODEL_PATH == viking_room_model_path) {
+		ubo.model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.proj = glm::perspective(glm::radians(45.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 10.0f);
+		ubo.proj[1][1] *= -1;
+	}
+	// viking house model
+	else {
+		ubo.model = glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.view = glm::lookAt(glm::vec3(60.0f, 40.0f, 20.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.proj = glm::perspective(glm::radians(35.0f), vulkanSwapChainExtent.width / (float)vulkanSwapChainExtent.height, 0.1f, 200.0f);
+		ubo.proj[1][1] *= -1;
+	}
 
 	memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-
 }
 
 
@@ -1649,7 +1631,7 @@ void Application::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t sw
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
 	// Bind the Index Buffer
-	vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 
 	// We specified viewport and scissor state for this pipeline to be dynamic. 
@@ -1826,7 +1808,7 @@ void Application::createTextureImage() {
 	const char* imagePath = "textures/Vulkan_Texture.png";
 
 	// Load the texture image
-	stbi_uc* pixels = stbi_load(imagePath, &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
+	stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
 	if (!pixels) {
 		throw std::runtime_error("RUNTIME ERROR: Failed to load texture image!");
 	}
@@ -1881,6 +1863,52 @@ void Application::createTextureImage() {
 
 void Application::createTextureImageView() {
 	textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+}
+
+/// @brief Load a 3D Model using tinyobjloader library
+void Application::load3DModel() {
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warn, err;
+
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())) {
+		throw std::runtime_error(warn + err);
+	}
+
+	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+	for (const auto& shape : shapes) {
+		for (const auto& index : shape.mesh.indices) {
+			Vertex vertex{};
+
+			vertex.position = {
+				attrib.vertices[3 * index.vertex_index + 0],
+				attrib.vertices[3 * index.vertex_index + 1],
+				attrib.vertices[3 * index.vertex_index + 2]
+			};
+
+			if (index.texcoord_index >= 0) {
+				vertex.texCoord = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
+			}
+			else {
+				vertex.texCoord = { 0.0f, 0.0f };
+			}
+
+			vertex.color = { 1.0f, 1.0f, 1.0f };
+
+			if (uniqueVertices.count(vertex) == 0) {
+				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+				vertices.push_back(vertex);
+			}
+
+			indices.push_back(uniqueVertices[vertex]);
+		}
+	}
+
 }
 
 void Application::createSynchronizationObjects() {

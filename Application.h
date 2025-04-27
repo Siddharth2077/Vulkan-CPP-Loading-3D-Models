@@ -4,9 +4,12 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
+#include <glm/gtx/hash.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
+#include <unordered_map>
 #include <stdexcept>
 #include <algorithm>
 #include <optional>
@@ -22,6 +25,13 @@
 #include <array>
 #include <set>
 
+// 3D Models:
+// Viking Room:
+const std::string viking_room_model_path{ "models/viking-room/viking-room.obj" };
+const std::string viking_room_texture_path{ "models/viking-room/viking_room.png" };
+// Viking House:
+const std::string viking_house_model_path{ "models/viking-house/source/final/viking-house.obj" };
+const std::string viking_house_texture_path{ "models/viking-house/textures/123_Material_color.png" };
 
 // Forward declarations
 struct QueueFamilyIndices;
@@ -40,8 +50,9 @@ private:
 	const char* APPLICATION_NAME = "Vulkan Application";
 	const uint32_t WIDTH{ 800 };
 	const uint32_t HEIGHT{ 600 };
-	const std::string MODEL_PATH = "models/viking-house/model/viking-house-model.obj";
-	const std::string TEXTURE_PATH = "models/viking-house/textures/mat_color.png";
+	VkCullModeFlags RASTERIZER_CULL_MODE = VK_CULL_MODE_NONE;
+	const std::string MODEL_PATH{ viking_room_model_path };
+	const std::string TEXTURE_PATH{ viking_room_texture_path };
 
 	VkInstance vulkanInstance = VK_NULL_HANDLE;
 	const int MAX_FRAMES_IN_FLIGHT{ 2 };
@@ -87,6 +98,10 @@ private:
 	VkImage depthImage;
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
+
+	// 3D Model properties
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -170,6 +185,7 @@ private:
 	uint32_t findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags properties);
 	void createTextureImage();
 	void createTextureImageView();
+	void load3DModel();
 
 	// static methods:
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -244,30 +260,27 @@ struct Vertex {
 
 		return inputAttributeDescriptions;
 	}
+
+	bool operator==(const Vertex& other) const {
+		return position == other.position && color == other.color && texCoord == other.texCoord;
+	}
 };
+
+namespace std {
+	template<> struct hash<Vertex> {
+		size_t operator()(Vertex const& vertex) const {
+			return ((hash<glm::vec3>()(vertex.position) ^
+				(hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+				(hash<glm::vec2>()(vertex.texCoord) << 1);
+		}
+	};
+}
 
 // UBO definition
 struct UniformBufferObject {
 	alignas(16) glm::mat4 model;
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
-};
-
-// Indexed Vertex data of the rectangle for the vertex buffer
-const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-	{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-	{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
-
-	{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-	{{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-	{{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
-};
-const std::vector<uint16_t> indices = {
-	0, 1, 2, 2, 3, 0,
-	4, 5, 6, 6, 7, 4
 };
 
 

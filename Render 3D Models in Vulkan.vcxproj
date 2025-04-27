@@ -157,12 +157,7 @@
     <None Include="shaders\vert.spv" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="models\viking-house\textures\mat_color.png" />
-    <Image Include="models\viking-house\textures\mat_ground_ao_optional.jpeg" />
     <Image Include="textures\Vulkan_Texture.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <Object Include="models\viking-house\model\final\viking-house-model.obj" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
