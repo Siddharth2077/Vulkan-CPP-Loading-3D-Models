@@ -2,6 +2,7 @@
 
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -80,6 +81,11 @@ private:
 	VkSampler textureSampler = VK_NULL_HANDLE;
 	VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
 
+	// Depth properties
+	VkImage depthImage;
+	VkDeviceMemory depthImageMemory;
+	VkImageView depthImageView;
+
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -140,7 +146,11 @@ private:
 
 	void createBuffer(VkDevice logicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, VkBuffer& outVkBuffer, VkDeviceMemory& outBufferMemory, const std::vector<uint32_t>& queueFamilyIndices = {});
 	void create2DVulkanImage(VkDevice logicalDevice, uint32_t width, uint32_t height, VkFormat imageFormat, VkImageTiling imageTiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags memoryProperties, VkImage& outImage, VkDeviceMemory& outImageDeviceMemory, const std::vector<uint32_t>& queueFamilyIndices = {});
-	VkImageView createImageView(VkImage image, VkFormat format);
+	VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+	VkFormat findDepthFormat();
+	bool hasStencilComponent(VkFormat format);
+	void createDepthResources();
+	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 	void createTextureSampler();
 	void beginSingleTimeTransferCommands();
 	void submitAndEndSingleTimeTransferCommands();
@@ -194,7 +204,7 @@ struct SwapChainSupportDetails {
 
 ///@brief Attributes to describe a vertex for the Vertex Shader.
 struct Vertex {
-	glm::vec2 position;
+	glm::vec3 position;
 	glm::vec3 color;
 	glm::vec2 texCoord;
 
@@ -215,7 +225,7 @@ struct Vertex {
 		// For position data
 		inputAttributeDescriptions.at(0).binding = 0;
 		inputAttributeDescriptions.at(0).location = 0;  // The corresponding shader layout location for: inPosition
-		inputAttributeDescriptions.at(0).format = VK_FORMAT_R32G32_SFLOAT;  // Yes, we reuse color formats to specify vec2 of floats
+		inputAttributeDescriptions.at(0).format = VK_FORMAT_R32G32B32_SFLOAT;  // Yes, we reuse color formats to specify vec2 of floats
 		inputAttributeDescriptions.at(0).offset = offsetof(Vertex, position);  // The offset in bytes from start of member: 'position' in the Vertex struct
 
 		// For color data
@@ -243,13 +253,19 @@ struct UniformBufferObject {
 
 // Indexed Vertex data of the rectangle for the vertex buffer
 const std::vector<Vertex> vertices = {
-	{{ -0.5f, -0.5f }, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},  // Top Left: red
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  // Top Right: green
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},  // Bottom Right: blue
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}  // Bottom Left: white
+	{{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+	{{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
+
+	{{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+	{{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 };
 const std::vector<uint16_t> indices = {
-	0, 1, 2, 2, 3, 0
+	0, 1, 2, 2, 3, 0,
+	4, 5, 6, 6, 7, 4
 };
 
 
