@@ -3,8 +3,6 @@
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-//#define GLM_FORCE_LEFT_HANDED
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
@@ -76,6 +74,12 @@ private:
 	VkDescriptorPool vulkanDescriptorPool = VK_NULL_HANDLE;  // descriptor pool
 	std::vector<VkDescriptorSet> vulkanDescriptorSets;  // descriptor sets
 
+	// Texture properties
+	VkImage textureImage = VK_NULL_HANDLE;
+	VkImageView textureImageView = VK_NULL_HANDLE;
+	VkSampler textureSampler = VK_NULL_HANDLE;
+	VkDeviceMemory textureDeviceMemory = VK_NULL_HANDLE;
+
 	// Synchronization objects:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector <VkSemaphore> renderFinishedSemaphores;
@@ -135,7 +139,14 @@ private:
 	void drawFrame();
 
 	void createBuffer(VkDevice logicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryProperties, VkBuffer& outVkBuffer, VkDeviceMemory& outBufferMemory, const std::vector<uint32_t>& queueFamilyIndices = {});
+	void create2DVulkanImage(VkDevice logicalDevice, uint32_t width, uint32_t height, VkFormat imageFormat, VkImageTiling imageTiling, VkImageUsageFlags usageFlags, VkMemoryPropertyFlags memoryProperties, VkImage& outImage, VkDeviceMemory& outImageDeviceMemory, const std::vector<uint32_t>& queueFamilyIndices = {});
+	VkImageView createImageView(VkImage image, VkFormat format);
+	void createTextureSampler();
+	void beginSingleTimeTransferCommands();
+	void submitAndEndSingleTimeTransferCommands();
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 	bool isPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice);
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice);
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice);
@@ -145,6 +156,8 @@ private:
 	bool checkValidationLayersSupport();
 	bool checkPhysicalDeviceExtensionsSupport(VkPhysicalDevice physicalDevice);
 	uint32_t findMemoryType(uint32_t typefilter, VkMemoryPropertyFlags properties);
+	void createTextureImage();
+	void createTextureImageView();
 
 	// static methods:
 	static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -183,6 +196,7 @@ struct SwapChainSupportDetails {
 struct Vertex {
 	glm::vec2 position;
 	glm::vec3 color;
+	glm::vec2 texCoord;
 
 	/// @brief Tell Vulkan how to pass this data format to the vertex shader once it's been uploaded into GPU memory.
 	static VkVertexInputBindingDescription getBindingDescription() {
@@ -194,9 +208,9 @@ struct Vertex {
 	}
 
 	// @brief Describes how to extract a vertex attribute from a chunk of vertex data originating from a binding description.
-	static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+	static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
 		// We have two attributes, position and color, so we need two attribute description structs.
-		std::array<VkVertexInputAttributeDescription, 2> inputAttributeDescriptions{};
+		std::array<VkVertexInputAttributeDescription, 3> inputAttributeDescriptions{};
 
 		// For position data
 		inputAttributeDescriptions.at(0).binding = 0;
@@ -209,6 +223,12 @@ struct Vertex {
 		inputAttributeDescriptions.at(1).location = 1;  // The corresponding shader layout location for: inColor
 		inputAttributeDescriptions.at(1).format = VK_FORMAT_R32G32B32_SFLOAT;  // vec3 of floats
 		inputAttributeDescriptions.at(1).offset = offsetof(Vertex, color);  // The offset in bytes from start of member: 'color' in the Vertex struct
+
+		// For texture coordinates
+		inputAttributeDescriptions.at(2).binding = 0;
+		inputAttributeDescriptions.at(2).location = 2;
+		inputAttributeDescriptions.at(2).format = VK_FORMAT_R32G32_SFLOAT;
+		inputAttributeDescriptions.at(2).offset = offsetof(Vertex, texCoord);
 
 		return inputAttributeDescriptions;
 	}
@@ -223,10 +243,10 @@ struct UniformBufferObject {
 
 // Indexed Vertex data of the rectangle for the vertex buffer
 const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},  // Top Left: red
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Top Right: green
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // Bottom Right: blue
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}}  // Bottom Left: white
+	{{ -0.5f, -0.5f }, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},  // Top Left: red
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},  // Top Right: green
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},  // Bottom Right: blue
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}  // Bottom Left: white
 };
 const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0
