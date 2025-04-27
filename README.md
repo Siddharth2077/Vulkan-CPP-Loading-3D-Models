@@ -1,74 +1,11 @@
 # Rendering 3D Models in Vulkan C++
-> Progress made so far visualized using a mermaid diagram.
-```mermaid
-graph TB
-    User((User))
 
-    subgraph "Vulkan Graphics Application"
-        subgraph "Window Management"
-            GLFW["Window System<br>GLFW"]
-        end
 
-        subgraph "Graphics Pipeline"
-            VulkanInstance["Vulkan Instance<br>Vulkan"]
-            PhysicalDevice["Physical Device<br>GPU"]
-            LogicalDevice["Logical Device<br>Vulkan"]
-            SwapChain["Swap Chain<br>Vulkan"]
-            RenderPass["Render Pass<br>Vulkan"]
-            GraphicsPipeline["Graphics Pipeline<br>Vulkan"]
-            
-            subgraph "Command Management"
-                GraphicsCommandPool["Graphics Command Pool<br>Vulkan"]
-                TransferCommandPool["Transfer Command Pool<br>Vulkan"]
-                CommandBuffers["Command Buffers<br>Vulkan"]
-            end
 
-            subgraph "Memory Management"
-                VertexBuffer["Vertex Buffer<br>Vulkan"]
-                IndexBuffer["Index Buffer<br>Vulkan"]
-                DeviceMemory["Device Memory<br>Vulkan"]
-            end
+3D Model Source - <a href="https://sketchfab.com/3d-models/viking-house-cea7cbebcd3842e5b08d72b237ca830a?utm_medium=embed&utm_campaign=share-popup&utm_content=cea7cbebcd3842e5b08d72b237ca830a" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;"> Viking House </a> by <a href="https://sketchfab.com/Roman_Nilikovskii?utm_medium=embed&utm_campaign=share-popup&utm_content=cea7cbebcd3842e5b08d72b237ca830a" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;"> Roman_Nilikovskii </a> on <a href="https://sketchfab.com?utm_medium=embed&utm_campaign=share-popup&utm_content=cea7cbebcd3842e5b08d72b237ca830a" target="_blank" rel="nofollow" style="font-weight: bold; color: #1CAAD9;">Sketchfab</a></p></div>
 
-            subgraph "Synchronization"
-                Semaphores["Semaphores<br>Vulkan"]
-                Fences["Fences<br>Vulkan"]
-            end
+![Screenshot 2025-04-27 223122](https://github.com/user-attachments/assets/4637b2ac-c206-49a9-9f4a-ec21f687fc39)
+> Basic 3D Model renderer with model-view-projection transformations implemented.
 
-            subgraph "Shader Management"
-                VertexShader["Vertex Shader<br>SPIR-V"]
-                FragmentShader["Fragment Shader<br>SPIR-V"]
-            end
-        end
-    end
 
-    %% Relationships
-    User -->|"Interacts with"| GLFW
-    GLFW -->|"Creates Surface"| VulkanInstance
-    VulkanInstance -->|"Selects"| PhysicalDevice
-    PhysicalDevice -->|"Creates"| LogicalDevice
-    LogicalDevice -->|"Creates"| SwapChain
-    LogicalDevice -->|"Creates"| RenderPass
-    LogicalDevice -->|"Creates"| GraphicsPipeline
 
-    GraphicsPipeline -->|"Uses"| VertexShader
-    GraphicsPipeline -->|"Uses"| FragmentShader
-
-    LogicalDevice -->|"Creates"| GraphicsCommandPool
-    LogicalDevice -->|"Creates"| TransferCommandPool
-    GraphicsCommandPool -->|"Allocates"| CommandBuffers
-    TransferCommandPool -->|"Allocates"| CommandBuffers
-
-    LogicalDevice -->|"Allocates"| DeviceMemory
-    DeviceMemory -->|"Backs"| VertexBuffer
-    DeviceMemory -->|"Backs"| IndexBuffer
-
-    LogicalDevice -->|"Creates"| Semaphores
-    LogicalDevice -->|"Creates"| Fences
-
-    SwapChain -->|"Uses"| RenderPass
-    RenderPass -->|"Uses"| GraphicsPipeline
-    GraphicsPipeline -->|"Uses"| VertexBuffer
-    GraphicsPipeline -->|"Uses"| IndexBuffer
-    CommandBuffers -->|"Synchronized by"| Semaphores
-    CommandBuffers -->|"Synchronized by"| Fences
-```
